@@ -6,7 +6,10 @@
 
 #include <exception.hh>
 #include <ptrace_proxy.hh>
+#include <breakpoint.hh>
 #include <string>
+#include <set>
+#include <unordered_map>
 #include <cstdlib>
 #include <cstring>
 #include <sys/types.h>
@@ -18,7 +21,9 @@ namespace BitTech {
 
 class Inferior {
 public:
-    Inferior(std::string const& program): signo{0}, pid{-1}, is_running{false}, program{program} {}
+    Inferior(std::string const& program)
+        : signo{0}, pid{-1}, is_running{false}, program{program}, 
+          breakpoint_addrs_to_set{}, breakpoints{} {}
 
 public:
     auto running() const -> bool {
@@ -59,9 +64,39 @@ public:
         handle_wait_signal_and_exit();
     }
 
+public:
+    auto set_breakpoint_at_addr(std::intptr_t addr) -> void {
+        if (!running()) {
+            // tracee 还未开始运行，只记录地址，不真正添加断点
+            breakpoint_addrs_to_set.insert(addr);
+            return;
+        }
+
+        if (breakpoints.count(addr) == 0) {
+            Breakpoint bp{pid, addr};
+            bp.enable();
+            breakpoints[addr] = bp;
+        }
+    }
+
+    auto continue_execute() -> void {
+        if (signo != 0) {
+            // 因为收到非 SIGTRAP 信号而停止，将信号重新发送给 tracee
+            PtraceProxy::delivery_signal_tracee(pid, signo);
+            signo = 0;  // 重置信号记录
+        } else {
+            // 不发送信号继续
+            PtraceProxy::continue_tracee(pid);
+        }
+
+        handle_wait_signal_and_exit();
+    }
+
 private:
     // 将 inferior 的状态重置
     auto reset() -> void {
+        // 将已设置的断点全部清空
+        breakpoints.clear();
         pid = -1;
         is_running = false;
     }
@@ -93,19 +128,6 @@ private:
         }
     }
 
-    auto continue_execute() -> void {
-        if (signo != 0) {
-            // 因为收到非 SIGTRAP 信号而停止，将信号重新发送给 tracee
-            PtraceProxy::delivery_signal_tracee(pid, signo);
-            signo = 0;  // 重置信号记录
-        } else {
-            // 不发送信号继续
-            PtraceProxy::continue_tracee(pid);
-        }
-
-        handle_wait_signal_and_exit();
-    }
-
 private:
     // 将传入的 args 重新组织成 execv 需要的格式
     auto tracee_routine(std::vector<std::string> const& args) -> void {
@@ -132,9 +154,24 @@ private:
             EXCEPTION("启动失败，退出");
         }
 
-        // 现在这个阶段，我们还没有什么事情要做，直接继续 tracee
+        // 将之前记录的断点地址真正设置为断点
+        for (auto addr : breakpoint_addrs_to_set) {
+            if (breakpoints.count(addr) == 0) {
+                Breakpoint bp{pid, addr};
+                bp.enable();
+                breakpoints[addr] = bp;
+            }
+        }
+
+        // 继续执行
         continue_execute();
     }
+
+private:
+    // tracee 未开始运行时，记录断点地址，在 tracee 开始运行时将断点加入
+    std::set<std::intptr_t> breakpoint_addrs_to_set;
+    // 真正设置到的断点
+    std::unordered_map<std::intptr_t, Breakpoint> breakpoints;
 
 private:
     // 表示 tracee 目前是否在运行

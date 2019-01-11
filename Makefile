@@ -6,8 +6,10 @@ HEADERS := $(shell find include -name *.hh)
 
 bdb: $(SOURCES) $(HEADERS)
 	g++ -g -std=c++11 -Iinclude $< -o $@
+	make -C tracees
 
 
 .PHONY: clean
 clean:
+	make -C tracees clean
 	rm -rf bdb

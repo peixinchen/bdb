@@ -10,6 +10,8 @@
 #include <inferior.hh>
 #include <command.hh>
 #include <commands/run.hh>
+#include <commands/continue.hh>
+#include <commands/break.hh>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -23,6 +25,8 @@ class Debugger {
 public:
     Debugger(std::string const& program): prev_args{}, commands{}, inferior{program} {
         commands.push_back(std::make_shared<Run>(inferior));
+        commands.push_back(std::make_shared<Continue>(inferior));
+        commands.push_back(std::make_shared<Break>(inferior));
     }
 
 public:
