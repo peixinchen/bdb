@@ -9,6 +9,7 @@
 #include <string_utils.hh>
 #include <inferior.hh>
 #include <command.hh>
+#include <commands/run.hh>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -21,6 +22,7 @@ namespace BitTech {
 class Debugger {
 public:
     Debugger(std::string const& program): prev_args{}, commands{}, inferior{program} {
+        commands.push_back(std::make_shared<Run>(inferior));
     }
 
 public:
