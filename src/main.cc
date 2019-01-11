@@ -1,6 +1,8 @@
 #include <debugger.hh>
 #include <exception.hh>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include <libgen.h>
 
 

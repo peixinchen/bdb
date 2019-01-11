@@ -21,7 +21,7 @@ auto split(std::string const& s, std::string const& delimiter) -> std::vector<st
         if (arg.size() > 0) {
             r.push_back(arg);
         }
-        last = pos;
+        last = pos + 1;
     } while (pos != std::string::npos);
 
     return r;

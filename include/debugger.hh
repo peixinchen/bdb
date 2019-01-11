@@ -59,7 +59,8 @@ public:
             // 查找合适的命令并执行
             try {
                 auto const& command = find_first_matched_command(args[0]);
-                command->run(args);
+                std::vector<std::string> args_without_name{args.begin() + 1, args.end()};
+                command->run(args_without_name);
             } catch (no_such_command const& exc) {
                 printf("不支持的命令\n");
                 help();
