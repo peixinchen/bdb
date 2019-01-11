@@ -80,6 +80,11 @@ public:
     }
 
     auto continue_execute() -> void {
+        // 因为当前指令可能仍然是 0xCC
+        // 所以我们先确认下，如果是，就先暂停断点
+        // 使用单步指令跳到下一条指令后再继续
+        step_over_breakpoint();
+
         if (signo != 0) {
             // 因为收到非 SIGTRAP 信号而停止，将信号重新发送给 tracee
             PtraceProxy::delivery_signal_tracee(pid, signo);
@@ -120,11 +125,49 @@ private:
         switch (siginfo.si_signo) {
         case SIGTRAP:
             // 触发断点而停止
-            // 现阶段我们没有什么事情要做
+            handle_sigtrap(siginfo);
             break;
         default:
             signo = siginfo.si_signo;
             printf("收到信号 %s\n", strsignal(siginfo.si_signo));
+        }
+    }
+
+    auto handle_sigtrap(siginfo_t siginfo) -> void {
+        if (siginfo.si_code != SI_KERNEL && siginfo.si_code != TRAP_BRKPT) {
+            // 不是因为断点触发的，直接返回
+            return;
+        }
+
+        // 确实是因为断点停下来的
+        // 需要将 PC 回退到执行 0xCC 之前的位置
+        // 然后重新执行原状态的指令
+        // 这里只处理 PC 的回退
+        // 执行原状态的操作在 step_over_breakpoint 中
+        auto pc = PtraceProxy::get_pc(pid);
+        PtraceProxy::set_pc(pid, pc - 1);
+    }
+
+    // 执行机器码级别单步运行的
+    // 然后等 tracee 停下来
+    auto single_step_instruction() -> void {
+        PtraceProxy::single_step(pid);
+        handle_wait_signal_and_exit();
+    }
+
+    // 判断当前要执行的指令是否是 0xCC 断点指令
+    // 如果是，则暂时关闭掉该断点
+    // 等执行过后再打开
+    auto step_over_breakpoint() -> void {
+        auto pc = PtraceProxy::get_pc(pid);
+        if (breakpoints.count(pc)) {
+            auto &bp = breakpoints[pc];
+            if (bp.enabled()) {
+                bp.disable();
+                // 利用指令单步操作运行过该指令
+                single_step_instruction();
+                bp.enable();
+            }
         }
     }
 
