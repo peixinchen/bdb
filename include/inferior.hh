@@ -7,6 +7,8 @@
 #include <exception.hh>
 #include <ptrace_proxy.hh>
 #include <breakpoint.hh>
+#include <elf/elf++.hh>
+#include <dwarf/dwarf++.hh>
 #include <string>
 #include <set>
 #include <unordered_map>
@@ -16,6 +18,9 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 
 namespace BitTech {
 
@@ -23,7 +28,20 @@ class Inferior {
 public:
     Inferior(std::string const& program)
         : signo{0}, pid{-1}, is_running{false}, program{program}, 
-          breakpoint_addrs_to_set{}, breakpoints{} {}
+          breakpoint_addrs_to_set{}, breakpoints{} {
+
+        int fd = open(program.c_str(), O_RDONLY);
+
+        elf::elf elf{elf::create_mmap_loader(fd)};
+        try {
+            dwarf = dwarf::dwarf{dwarf::elf::create_loader(elf)};
+        } catch (dwarf::format_error const& exc) {
+            printf("** 没有找到程序的调试信息 **\n");
+            dwarf = dwarf::dwarf{};
+        }
+
+        close(fd);
+    }
 
 public:
     auto running() const -> bool {
@@ -65,6 +83,7 @@ public:
     }
 
 public:
+    // 在 addr 地址处设置 或者 准备设置断点
     auto set_breakpoint_at_addr(std::intptr_t addr) -> void {
         if (!running()) {
             // tracee 还未开始运行，只记录地址，不真正添加断点
@@ -79,6 +98,8 @@ public:
         }
     }
 
+public:
+    // 继续执行 tracee
     auto continue_execute() -> void {
         // 因为当前指令可能仍然是 0xCC
         // 所以我们先确认下，如果是，就先暂停断点
@@ -95,6 +116,38 @@ public:
         }
 
         handle_wait_signal_and_exit();
+    }
+
+public:
+    // 根据函数名称返回函数起始位置的代码行调试信息
+    auto get_line_iter_by_function_name(std::string const& name) const
+        -> dwarf::line_table::iterator {
+
+        // 遍历调试信息的每个编译单元
+        for (auto const& cu : dwarf.compilation_units()) {
+            // 遍历编译单元的每个 DWARF Information Entries
+            for (auto const& die : cu.root()) {
+                // 如果 tag 表明是函数（subprogram）、有 name 并且 name 就是要查找的函数名
+                if (die.tag == dwarf::DW_TAG::subprogram 
+                    && die.has(dwarf::DW_AT::name) 
+                    && at_name(die) == name) {
+                    // 找到了函数对应的 DIE
+                    // 取得函数的开始指令地址
+                    auto low_pc = at_low_pc(die);
+
+                    // 根据地址在行调试信息中找到详细信息
+                    auto &line_table = cu.get_line_table();
+                    auto it = line_table.find_address(low_pc);
+                    if (it != line_table.end()) {
+                        return it;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        NO_DEBUG_INFORMATION("没有找到函数的调试信息");
     }
 
 private:
@@ -209,6 +262,10 @@ private:
         // 继续执行
         continue_execute();
     }
+
+private:
+    // 提取 program 中的 debug 信息
+    dwarf::dwarf dwarf;
 
 private:
     // tracee 未开始运行时，记录断点地址，在 tracee 开始运行时将断点加入

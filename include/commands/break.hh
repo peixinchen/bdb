@@ -33,8 +33,19 @@ public:
             return;
         }
 
-        std::intptr_t addr = std::stol(args[0], 0, 16);
-        inferior.set_breakpoint_at_addr(addr);
+        if (args[0][0] == '*') {
+            // 假设是 *0x 开头，按指令地址断点
+            std::intptr_t addr = std::stol(std::string{args[0], 3}, 0, 16);
+            inferior.set_breakpoint_at_addr(addr);
+        } else {
+            // 按函数断点
+            try {
+                auto line_entry = inferior.get_line_iter_by_function_name(args[0]);
+                inferior.set_breakpoint_at_addr(line_entry->address);
+            } catch (no_debug_information const& exc) {
+                printf("没有找到函数的调试信息\n");
+            }
+        }
     }
 };
 
