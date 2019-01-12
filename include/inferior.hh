@@ -119,10 +119,8 @@ public:
     }
 
 public:
-    // 根据函数名称返回函数起始位置的代码行调试信息
-    auto get_line_iter_by_function_name(std::string const& name) const
-        -> dwarf::line_table::iterator {
-
+    // 根据函数名称返回函数起始地址
+    auto get_addr_by_function_name(std::string const& name) const -> std::intptr_t {
         // 遍历调试信息的每个编译单元
         for (auto const& cu : dwarf.compilation_units()) {
             // 遍历编译单元的每个 DWARF Information Entries
@@ -133,16 +131,7 @@ public:
                     && at_name(die) == name) {
                     // 找到了函数对应的 DIE
                     // 取得函数的开始指令地址
-                    auto low_pc = at_low_pc(die);
-
-                    // 根据地址在行调试信息中找到详细信息
-                    auto &line_table = cu.get_line_table();
-                    auto it = line_table.find_address(low_pc);
-                    if (it != line_table.end()) {
-                        return it;
-                    }
-
-                    break;
+                    return at_low_pc(die);
                 }
             }
         }

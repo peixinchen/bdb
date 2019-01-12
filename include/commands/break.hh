@@ -40,8 +40,8 @@ public:
         } else {
             // 按函数断点
             try {
-                auto line_entry = inferior.get_line_iter_by_function_name(args[0]);
-                inferior.set_breakpoint_at_addr(line_entry->address);
+                auto addr = inferior.get_addr_by_function_name(args[0]);
+                inferior.set_breakpoint_at_addr(addr);
             } catch (no_debug_information const& exc) {
                 printf("没有找到函数的调试信息\n");
             }
