@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <fstream>
 
 
 namespace BitTech {
@@ -119,6 +120,47 @@ public:
     }
 
 public:
+    // 打印 filename 第 line 行左右的代码，上下文分别 n_context
+    auto list_source(std::string const& filename, unsigned int line, unsigned int n_context) const -> void {
+        std::ifstream source_file{filename};
+        unsigned int start = n_context > line ? 1 : line - n_context;
+        unsigned int end = line + n_context;
+        unsigned int current = 1u;
+
+        std::string source_line{};
+        while (current < start && std::getline(source_file, source_line)) {
+            ++current;
+        }
+
+        while (current <= end && std::getline(source_file, source_line)) {
+            printf("%s%3d|%s\n", current == line ? "->" : "  ", current, source_line.c_str());
+            ++current;
+        }
+    }
+
+public:
+    // 根据机器码地址返回行调试信息
+    auto get_line_iter_by_addr(std::intptr_t addr) const -> dwarf::line_table::iterator {
+        for (auto const& cu : dwarf.compilation_units()) {
+            if (die_pc_range(cu.root()).contains(addr)) {
+                auto &line_table = cu.get_line_table();
+                auto it = line_table.find_address(addr);
+                if (it != line_table.end()) {
+                    return it;
+                }
+                break;
+            }
+        }
+
+        NO_DEBUG_INFORMATION("没有找到函数的调试信息");
+    }
+
+    // 根据函数名称返回函数起始的行调试信息
+    auto get_line_iter_by_function_name(std::string const& name) const -> dwarf::line_table::iterator {
+        auto low_pc = get_addr_by_function_name(name);
+        return get_line_iter_by_addr(low_pc);
+    }
+
     // 根据函数名称返回函数起始地址
     auto get_addr_by_function_name(std::string const& name) const -> std::intptr_t {
         // 遍历调试信息的每个编译单元
@@ -188,6 +230,12 @@ private:
         // 执行原状态的操作在 step_over_breakpoint 中
         auto pc = PtraceProxy::get_pc(pid);
         PtraceProxy::set_pc(pid, pc - 1);
+
+        try {
+            auto line_iter = get_line_iter_by_addr(pc - 1);
+            list_source(line_iter->file->path, line_iter->line, 1);
+        } catch (no_debug_information const& exc) {
+        }
     }
 
     // 执行机器码级别单步运行的
