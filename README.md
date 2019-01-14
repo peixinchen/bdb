@@ -366,7 +366,7 @@ $ vim -b hello
 
 ### 架构思路
 
-![](images\architecture.jpg)
+![architecture](images\architecture.jpg)
 
 ### 代码目录结构
 
