@@ -18,14 +18,20 @@ CXXLDFLAGS := -L$(ELF_DIR) -L$(DWARF_DIR) -Wl,-rpath,$(ELF_DIR):$(DWARF_DIR)
 # 依赖库
 LIBRARIES := -lelf++ -ldwarf++
 
-.PHONY: libelfin
-libelfin:
-	make -C ext/libelfin
+all: bdb
 
-bdb: libelfin $(SOURCES) $(HEADERS)
+bdb: $(SOURCES) $(HEADERS) libelfin
 	g++ $(CXXFLAGS) $(CXXLDFLAGS) $< -o $@ $(LIBRARIES)
 	make -C tracees
 
+.PHONY: libelfin
+libelfin: ext/libelfin
+	make -C ext/libelfin
+
+ext/libelfin:
+	git clone https://github.com/TartanLlama/libelfin.git ext/libelfin
+	cd ext/libelfin
+	git checkout fbreg
 
 .PHONY: clean
 clean:
