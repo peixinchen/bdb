@@ -18,7 +18,11 @@ CXXLDFLAGS := -L$(ELF_DIR) -L$(DWARF_DIR) -Wl,-rpath,$(ELF_DIR):$(DWARF_DIR)
 # 依赖库
 LIBRARIES := -lelf++ -ldwarf++
 
-bdb: $(SOURCES) $(HEADERS)
+.PHONY: libelfin
+libelfin:
+	make -C ext/libelfin
+
+bdb: libelfin $(SOURCES) $(HEADERS)
 	g++ $(CXXFLAGS) $(CXXLDFLAGS) $< -o $@ $(LIBRARIES)
 	make -C tracees
 
@@ -27,3 +31,4 @@ bdb: $(SOURCES) $(HEADERS)
 clean:
 	make -C tracees clean
 	rm -rf bdb
+	make -C ext/libelfin clean
