@@ -13,6 +13,7 @@
 #include <commands/continue.hh>
 #include <commands/break.hh>
 #include <commands/list.hh>
+#include <commands/step.hh>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -29,6 +30,7 @@ public:
         commands.push_back(std::make_shared<Continue>(inferior));
         commands.push_back(std::make_shared<Break>(inferior));
         commands.push_back(std::make_shared<List>(inferior));
+        commands.push_back(std::make_shared<Step>(inferior));
     }
 
 public:

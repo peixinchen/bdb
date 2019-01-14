@@ -119,6 +119,15 @@ public:
         handle_wait_signal_and_exit();
     }
 
+    // 执行下一条机器码，如果有断点，则用 step_over 跳过，否则直接调用 ptrace
+    auto single_step_instruction_with_breakpoint_check() -> void {
+        if (breakpoints.count(PtraceProxy::get_pc(pid))) {
+            step_over_breakpoint();
+        } else {
+            single_step_instruction();
+        }
+    }
+
 public:
     // 打印 filename 第 line 行左右的代码，上下文分别 n_context
     auto list_source(std::string const& filename, unsigned int line, unsigned int n_context) const -> void {
@@ -139,6 +148,28 @@ public:
     }
 
 public:
+    // 根据机器码地址返回函数 DIE
+    auto get_function_die_by_addr(std::intptr_t addr) const -> dwarf::die {
+        for (auto const&cu : dwarf.compilation_units()) {
+            if (die_pc_range(cu.root()).contains(addr)) {
+                for (auto const& die : cu.root()) {
+                    if (die.tag == dwarf::DW_TAG::subprogram
+                        && die_pc_range(die).contains(addr)) {
+                        return die;
+                    }
+                }
+            }
+        }
+
+        NO_DEBUG_INFORMATION("没有找到地址的调试信息");
+    }
+
+    // 根据当前 PC 返回函数 DIE
+    auto get_function_die_by_pc() const -> dwarf::die {
+        auto pc = PtraceProxy::get_pc(pid);
+        return get_function_die_by_addr(pc);
+    }
+
     // 根据机器码地址返回行调试信息
     auto get_line_iter_by_addr(std::intptr_t addr) const -> dwarf::line_table::iterator {
         for (auto const& cu : dwarf.compilation_units()) {
@@ -155,14 +186,21 @@ public:
         NO_DEBUG_INFORMATION("没有找到函数的调试信息");
     }
 
+    // 根据当前 PC 返回行调试信息
+    auto get_line_iter_by_pc() const -> dwarf::line_table::iterator {
+        auto pc = PtraceProxy::get_pc(pid);
+        return get_line_iter_by_addr(pc);
+    }
+
     // 根据函数名称返回函数起始的行调试信息
     auto get_line_iter_by_function_name(std::string const& name) const -> dwarf::line_table::iterator {
-        auto low_pc = get_addr_by_function_name(name);
+        auto die = get_die_by_function_name(name);
+        auto low_pc = at_low_pc(die);
         return get_line_iter_by_addr(low_pc);
     }
 
-    // 根据函数名称返回函数起始地址
-    auto get_addr_by_function_name(std::string const& name) const -> std::intptr_t {
+    // 根据函数名称返回 DIE 信息
+    auto get_die_by_function_name(std::string const& name) const -> dwarf::die {
         // 遍历调试信息的每个编译单元
         for (auto const& cu : dwarf.compilation_units()) {
             // 遍历编译单元的每个 DWARF Information Entries
@@ -172,8 +210,7 @@ public:
                     && die.has(dwarf::DW_AT::name) 
                     && at_name(die) == name) {
                     // 找到了函数对应的 DIE
-                    // 取得函数的开始指令地址
-                    return at_low_pc(die);
+                    return die;
                 }
             }
         }
@@ -307,6 +344,9 @@ private:
 private:
     // tracee 未开始运行时，记录断点地址，在 tracee 开始运行时将断点加入
     std::set<std::intptr_t> breakpoint_addrs_to_set;
+
+public:
+    // step 和 run 命令会用到
     // 真正设置到的断点
     std::unordered_map<std::intptr_t, Breakpoint> breakpoints;
 
@@ -319,6 +359,8 @@ private:
 private:
     // 记录要运行的程序
     std::string program;
+
+public:
     // 记录 tracee 运行的 pid
     pid_t pid;
 };

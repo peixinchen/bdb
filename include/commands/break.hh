@@ -40,7 +40,8 @@ public:
         } else {
             // 按函数断点
             try {
-                auto addr = inferior.get_addr_by_function_name(args[0]);
+                auto func_die = inferior.get_die_by_function_name(args[0]);
+                auto addr = at_low_pc(func_die);
                 inferior.set_breakpoint_at_addr(addr);
             } catch (no_debug_information const& exc) {
                 printf("没有找到函数的调试信息\n");
